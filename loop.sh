@@ -25,9 +25,9 @@ else
 . ./ghbot_ve/bin/activate
 fi
 
-while true ;
-do
-    git pull origin master
-    ./ghbot.rb
-    sleep $SLEEP
-done
+#while true ;
+#do
+#    git pull origin master
+#    ./ghbot.rb
+#    sleep $SLEEP
+#done
