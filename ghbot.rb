@@ -54,6 +54,10 @@ def get_lint_comments_hashes client, repo_name, pr
     client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^Lint report for commit ([a-fA-F0-9]+):/)} .reject {|h| h.nil?} .map {|c| c[1]}
 end
 
+def get_fixture_eval_comments_hashes client, repo_name, pr
+    client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^Fixture evaluation report for commit ([a-fA-F0-9]+)/)}.reject {|h| h.nil?}.map{|c| c[1]}
+end
+
 def remove_old_lint_comments client, repo_name, pr
     bot_comments(client, repo_name, pr).reject {|c| c[:body].strip.match(/^Lint report for commit ([a-fA-F0-9]+):/).nil? } .each { |comment| client.delete_comment repo_name, comment.id }
 end
@@ -90,6 +94,7 @@ end
     review_ok = repo_data["review_ok"]
     review_notok = repo_data["review_notok"]
     flake = repo_data["flake"]
+    fixture_eval = repo_data["fixture_eval"]
     # Exctract data for flaking
     unless flake.nil?
         needs_flake = flake["needs"]
@@ -103,7 +108,17 @@ end
     else
         flake = false
     end
+    # Extract data for fixture evaluation
+    unless fixture_eval.nil?
+      fixture_eval_enabled = fixture_eval[:enabled]
+      fixture_search_loc = fixture_eval["search_loc"] || ""
+      fixture_global = fixture_eval["global_path"] || ""
+    end
+    # loop over pull requests and do the things
     client.pull_requests(repo_name, :state => "open").each do |pull_request|
+        # REMOVE THIS before merge (just for testing)
+        next unless pull_request.number == 8963
+
         # some variables
         # We have to retrieve full PR object here
         pull_request = client.pull_request repo_name, pull_request.number
@@ -221,7 +236,6 @@ end
                 end
             end
             any_lint_issues = flakes.values.collect(&:length).sort.uniq.reject {|n| n == 0} .length > 0
-
             # label
             if any_lint_issues
                 remove_rfr_if_present(client, repo_name, pull_request.number)
@@ -349,6 +363,81 @@ end
                 end
             end
         end
+
+        # Fixture evaluation
+        fixture_evaluated = get_fixture_eval_comments_hashes client, repo_name, pull_request.number
+        fixtures_for_comment = Hash.new(0)
+        if fixture_eval_enabled && (! fixture_evaluated.include? pull_request.head.sha) 
+            # make a Hash to list functions that have been modified
+            funcs_to_check = Hash.new(0)
+            # get the functions modified by the PR
+            pr_files.each do |file|
+                # get the module name
+                module_name = file.filename.chomp(".py").gsub("/", ".")
+
+                # store each file in the Hash
+                funcs_to_check[module_name] = []
+
+                patch = GitDiffParser::Patch.new(file.patch)
+                lines = file.patch.split(/\n/)
+
+
+                # within each line find the function names that have altered code in them
+                lines.each do |line|
+                    if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                      funcs_to_check[module_name] << match.captures[0]
+                    end
+                end
+            end
+             
+            clone_url = pull_request.head.repo.git_url
+            branch = pull_request.head.ref
+            unless funcs_to_check.empty?
+                # clone the repo
+                `mkdir -p /tmp/ghbot; rm -rf /tmp/ghbot/clone`
+                `git clone -b #{branch} #{clone_url} /tmp/ghbot/clone`
+                # loop over each function and check if it is a fixture
+                funcs_to_check.each do |module_name, function_array|
+                    function_array.each do |func_name|
+                        cmd_result = `cd /tmp/ghbot/clone && python -c "from #{module_name} import #{func_name}; print('_pytestfixturefunction' in #{func_name}.__dict__.keys())"`.strip
+                        # if true, this is a fixture!
+                        if cmd_result.downcase.to_s?
+                            fixtures_for_comment[func_name] = Hash.new(0)
+                            is_global = false
+                            if module_name.include? fixture_eval["global_path"] or module_name.include? fixture_Eval["global_path"].gsub("/",".")
+                                search_loc = fixture_eval["search_loc"] # global fixture
+                                is_global = true
+                            else
+                                search_loc = module_name.gsub(".","/").concat(".py") # local fixture
+                            end
+                            # store global property
+                            fixtures_for_comment["is_global"] = is_global
+
+                            puts "#{func_name} is a fixture, finding usages of it within #{search_loc}"
+
+                            fixture_usages = `cd /tmp/ghbot/clone && grep -H -r #{func_name} #{search_loc}`.strip.split(/\n/)
+
+                            # now find out of the usages, which functions we want to list
+                            old_file = ""
+                            fixture_usages.each do |line|
+                                if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                                    new_file = line.split(":")[0]
+
+                                    if old_file != new_file
+                                        fixtures_for_comment[func_name][new_file] = []
+                                    end
+                                    fixtures_for_comment[func_name][new_file] << match.captures[0]
+
+                                    old_file = new_file
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            # build the comment
+        end
+
         # WIP'ing (ordinary people do not have access to the labels)
         title = pull_request[:title].downcase.gsub /\s+/, " "
 

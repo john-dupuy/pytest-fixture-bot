@@ -26,6 +26,9 @@ repo = client.repository repo_name
 pull_request = client.pull_request repo_name, pr_id
 pr_files = client.pull_request_files repo_name, pr_id
 
+puts pull_request.number == 8963
+abort
+
 def get_fixture_eval_comments_hashes client, repo_name, pr
     client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^Fixture evaluation report for commit ([a-fA-F0-9]+)/)}.reject {|h| h.nil?}.map{|c| c[1]}
 end
@@ -37,22 +40,22 @@ end
 
 # get the functions modified by the PR
 pr_files.each do |file|
-  # get the module name
-  module_name = file.filename.chomp(".py").gsub("/", ".")
+    # get the module name
+    module_name = file.filename.chomp(".py").gsub("/", ".")
 
-  # store each file in the Hash
-  funcs_to_check[module_name] = []
+    # store each file in the Hash
+    funcs_to_check[module_name] = []
 
-  patch = GitDiffParser::Patch.new(file.patch)
-  lines = file.patch.split(/\n/)
+    patch = GitDiffParser::Patch.new(file.patch)
+    lines = file.patch.split(/\n/)
 
 
-  # within each line find the function names that have altered code in them
-  lines.each do |line|
-      if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
-        funcs_to_check[module_name] << match.captures[0]
-      end
-  end
+    # within each line find the function names that have altered code in them
+    lines.each do |line|
+        if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+          funcs_to_check[module_name] << match.captures[0]
+        end
+    end
 end
 
 # define a Hash that will be used for he GH comment 
