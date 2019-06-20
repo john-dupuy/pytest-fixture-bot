@@ -5,7 +5,7 @@ require "git_diff_parser"
 
 # set some global constants
 Octokit.auto_paginate = true
-config = YAML.load_file("ghbot.yaml")
+config = YAML.load_file("fixture_bot.yaml")
 repo_name = "ManageIQ/integration_tests"
 pr_id = 8963
 client = Octokit::Client.new(config["credentials"] || {})
