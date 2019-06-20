@@ -1,0 +1,13 @@
+credentials:
+  :access_token: "<token_id>"
+  :login: <user>
+repositories:
+  "ManageIQ/integration_tests":
+    fixture_eval:
+      :enabled: true
+      search_loc: "cfme/tests/"
+      global_loc: "cfme/fixtures/"
+  "ManageIQ/wrapanapi":
+    fixture_eval:
+      :enabled: false
+
