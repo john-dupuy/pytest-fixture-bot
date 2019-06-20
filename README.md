@@ -1,4 +1,4 @@
-lint-rebase-bugger
+pytest-fixture-evaluator-bot
 ==================
 
-Small script to annoy people when their lint is wrong or the PR needs to be rebased
+Small script to annoy people when they've modified fixtures and post a comment to check tests which use those fixtures.
