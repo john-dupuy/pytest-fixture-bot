@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require "octokit"
+require "ostruct"
 require "yaml"
 require "git_diff_parser"
 
@@ -37,11 +38,11 @@ def build_gh_comment fixtures_for_comment, pull_request
             next unless file_name.include? ".py"
             comment_body << "- **#{file_name}**\n"
             function_array.each do |function_name|
-                comment_body << "    *#{function_name}*\n"
+                comment_body << "    - *#{function_name}*\n"
             end 
         end
     end
-    comment_body << "\nPlease, check these functions to make sure your fixture changes do not break existing usage :smiley:"
+    comment_body << "\nPlease, consider creating a PRT run against these tests make sure your fixture changes do not break existing usage :smiley:"
 end
 
 def true?(obj)
@@ -94,6 +95,7 @@ end
 
                 # store each file in the Hash
                 funcs_to_check[module_name] = []
+                classes_modified = []
 
                 patch = GitDiffParser::Patch.new(file.patch)
                 lines = file.patch.split(/\n/)
@@ -101,9 +103,20 @@ end
 
                 # within each line find the function names that have altered code in them
                 lines.each do |line|
-                    if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
-                      funcs_to_check[module_name] << match.captures[0]
+                    # also find any classes that were modified
+                    if match = line.match(/class ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                        classes_modified << match.captures[0]
                     end
+                    # first check if the fixture is part of a class (it will be tabbed over)
+                    if match = line.match(/    def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                        # since the class will always be found before the function, should be safe to use last index for class_name
+                        found_function = OpenStruct.new(:name => match.captures[0], :in_class? => true, :class_name => classes_modified[-1])
+                        funcs_to_check[module_name] << found_function 
+                    elsif match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                        found_function = OpenStruct.new(:name => match.captures[0], :in_class? => false)
+                        funcs_to_check[module_name] << found_function 
+                    end
+
                 end
             end
              
@@ -115,8 +128,15 @@ end
                 `git clone -b #{branch} #{clone_url} #{fixture_clone}/clone`
                 # loop over each function and check if it is a fixture
                 funcs_to_check.each do |module_name, function_array|
-                    function_array.each do |func_name|
-                        cmd_result = `cd #{fixture_clone}/clone && python -c "from #{module_name} import #{func_name}; print('_pytestfixturefunction' in #{func_name}.__dict__.keys())"`.strip
+                    function_array.each do |func_struct|
+                        func_name = func_struct.name
+
+                        if func_struct.in_class?
+                            class_name = func_struct.class_name
+                            cmd_result = `cd #{fixture_clone}/clone && python -c "from #{module_name} import #{class_name}; print('_pytestfixturefunction' in #{class_name}.#{func_name}.__dict__.keys())"`.strip
+                        else
+                            cmd_result = `cd #{fixture_clone}/clone && python -c "from #{module_name} import #{func_name}; print('_pytestfixturefunction' in #{func_name}.__dict__.keys())"`.strip
+                        end
                         # if true, this is a fixture!
                         if true?(cmd_result) 
                             fixtures_for_comment[func_name] = Hash.new(0)
