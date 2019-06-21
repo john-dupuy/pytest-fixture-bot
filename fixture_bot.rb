@@ -143,7 +143,10 @@ end
                                     if old_file != new_file
                                         fixtures_for_comment[func_name][new_file] = []
                                     end
-                                    fixtures_for_comment[func_name][new_file] << match.captures[0]
+                                    # make sure we don't list the fixture under the message
+                                    unless func_name == match.captures[0] 
+                                        fixtures_for_comment[func_name][new_file] << match.captures[0]
+                                    end
 
                                     old_file = new_file
                                 end
