@@ -10,47 +10,11 @@ client = Octokit::Client.new(config["credentials"] || {})
 bot_user_name = config['credentials'][:login]
 
 def bot_comments client, repo_name, pr
-    client.issue_comments(repo_name, pr).reject {|c| c[:body].strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)./).nil? }
-end
-
-def landscape_comments client, repo_name, pr
-    client.issue_comments(repo_name, pr).reject {|c| c[:body].strip.match(/\[Code Health\]/).nil? }
-end
-
-def old_landscape_comments client, repo_name, pr
-    comments = landscape_comments client, repo_name, pr
-    if comments.length <= 1
-        []  # There is no comment or only one, which we obviously don't want to delete
-    else
-        comments.take(comments.length - 1)
-    end
-end
-
-def remove_old_landscape_comments client, repo_name, pr
-    old_landscape_comments(client, repo_name, pr).each do |comment|
-        client.delete_comment repo_name, comment.id
-    end.length
-end
-
-def get_all_merge_request_comments client, repo_name, pr, bot_user_name
-    pull_request = client.pull_request repo_name, pr
-    client.issue_comments(repo_name, pr).select {|c| c[:user][:login] == pull_request.user.login} .select {|c|
-        c.body.strip.match(/^\s*@#{bot_user_name}\s+please\s+merge\s*$/i)}
-end
-
-def get_all_responded_comment_ids client, repo_name, pr, bot_user_name
-    client.issue_comments(repo_name, pr).select {|c| c[:user][:login] == bot_user_name} .map {|c|
-        c.body.strip.match(/^\s*Response to comment #(\d+):/)} .reject(&:nil?) .map {|m| m[1].to_i }
-end
-
-def pr_auto_mergeable client, repo_name, pr, bot_user_name
-    pull_request = client.pull_request repo_name, pr
-    client.issue_comments(repo_name, pr).select {|c| c[:user][:login] == bot_user_name} .map {|c|
-        c.body.strip.match(/<mergeable\/>/) && c.body.strip.match(/^Lint report for commit #{pull_request.head.sha}:/)} .reject(&:nil?) .size > 0
+    client.issue_comments(repo_name, pr).reject {|c| c[:body].strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)/).nil? }
 end
 
 def get_fixture_eval_comments_hashes client, repo_name, pr
-    client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)./)}.reject {|h| h.nil?}.map{|c| c[1]}
+    client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)/)}.reject {|h| h.nil?}.map{|c| c[1]}
 end
 
 def remove_old_fixture_eval_comments client, repo_name, pr
@@ -58,11 +22,10 @@ def remove_old_fixture_eval_comments client, repo_name, pr
     comments.each do |comment|
         client.delete_comment repo_name, comment.id
     end
-    #bot_comments(client, repo_name, pr).reject {|c| c[:body].strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)./).nil? } .each { |comment| client.delete_comment repo_name, comment.id }
 end
 
 def build_gh_comment fixtures_for_comment, pull_request
-    comment_body = "I detected some fixture changes in commit #{pull_request.head.sha}.\n"
+    comment_body = "I detected some fixture changes in commit #{pull_request.head.sha}\n"
     fixtures_for_comment.each do |fixture_name, file_hash|
         local_or_global = "*local*"
         if file_hash["is_global"]
