@@ -25,8 +25,19 @@ def remove_old_fixture_eval_comments client, repo_name, pr
     end
 end
 
-def build_gh_comment fixtures_for_comment, pull_request
+def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
     comment_body = "I detected some fixture changes in commit #{pull_request.head.sha}\n"
+    # first determine whether the comment will be greater than 30 lines, if so, we want to hide the comment
+    nl = fixtures_for_comment.size
+    fixtures_for_comment.each do |fixture_name, file_hash|
+        nl += file_hash.size
+        file_hash.each do |file_name, function_array|
+            next unless file_name.include? ".py"
+            nl += function_array.size
+        end
+    end
+    comment_body << "\n<details>\n<summary>\n<b>Show fixtures</b>\n</summary>\n\n" if nl > max_comment_length
+    
     fixtures_for_comment.each do |fixture_name, file_hash|
         local_or_global = "*local*"
         if file_hash["is_global"]
@@ -34,7 +45,6 @@ def build_gh_comment fixtures_for_comment, pull_request
         end
         comment_body << "\nThe #{local_or_global} fixture **`#{fixture_name}`** is used in the following files:\n"
         file_hash.each do |file_name, function_array|
-
             next unless file_name.include? ".py"
             comment_body << "- **#{file_name}**\n"
             function_array.each do |function_name|
@@ -42,6 +52,7 @@ def build_gh_comment fixtures_for_comment, pull_request
             end 
         end
     end
+    comment_body << "\n</details>\n" if nl > max_comment_length 
     comment_body << "\nPlease, consider creating a PRT run against these tests make sure your fixture changes do not break existing usage :smiley:"
 end
 
@@ -59,11 +70,13 @@ end
      
     # Extract data for fixture evaluation
     fixture_eval = repo_data["fixture_eval"]
+
     unless fixture_eval.nil?
         fixture_eval_enabled = fixture_eval[:enabled]
         fixture_search = fixture_eval["search_loc"] || ""
         fixture_global = fixture_eval["global_loc"] || ""
         fixture_clone = fixture_eval["clone_loc"] || ""
+        max_comment_length = fixture_eval["max_comment_length"] || 30
     end
 
     
@@ -141,12 +154,26 @@ end
                         if true?(cmd_result) 
                             fixtures_for_comment[func_name] = Hash.new(0)
                             is_global = false
-                            if module_name.include? fixture_global or module_name.include? fixture_global.gsub("/",".")
-                                search_loc = fixture_search # global fixture
-                                is_global = true
+                            # determine whether or not it's a global fixture
+                            if fixture_global.kind_of?(Array)
+                                fixture_global.each do |global_loc|
+                                    if module_name.include? global_loc or module_name.include? global_loc.gsub("/",".")
+                                        is_global = true
+                                        break
+                                    end
+                                end
+                            else
+                                if module_name.include? fixture_global or module_name.include? fixture_global.gsub("/",".")
+                                    is_global = true
+                                end
+                            end
+
+                            if is_global
+                                search_loc = fixture_search
                             else
                                 search_loc = module_name.gsub(".","/").concat(".py") # local fixture
                             end
+                            
                             # store global property
                             fixtures_for_comment[func_name]["is_global"] = is_global
 
@@ -179,7 +206,7 @@ end
             unless fixtures_for_comment.empty? && (fixture_evaluated.include? pull_request.head.sha)
                 puts "Adding fixture evaluation comment for #{pull_request.head.sha}"
                 remove_old_fixture_eval_comments client, repo_name, pull_request.number
-                comment_body = build_gh_comment fixtures_for_comment, pull_request
+                comment_body = build_gh_comment fixtures_for_comment, pull_request, max_comment_length
                 client.add_comment repo_name, pull_request.number, comment_body
             end    
         end
