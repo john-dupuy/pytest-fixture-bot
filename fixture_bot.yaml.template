@@ -6,8 +6,9 @@ repositories:
     fixture_eval:
       :enabled: true
       search_loc: "cfme/tests/"
-      global_loc: "cfme/fixtures/"
+      global_loc: "cfme/fixtures/"  # locations that are considered global locations, can be Array (list) or str
       clone_loc: "/tmp/fixture_bot"
+      max_comment_length: 30    # length of comment before the user must click to expand it
   "ManageIQ/wrapanapi":
     fixture_eval:
       :enabled: false
