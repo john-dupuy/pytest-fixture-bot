@@ -16,18 +16,17 @@ ruby -e "require 'git_diff_parser'" >/dev/null 2>&1 || {
     exit 2
 }
 
-if [ ! -e ./ghbot_ve/bin/activate ] ;
+if [ ! -e ./fixture_ve/bin/activate ] ;
 then
-    virtualenv ghbot_ve
-    . ./ghbot_ve/bin/activate
-    pip install flake8
+    virtualenv fixturebot_ve
+    . ./fixturebot_ve/bin/activate
 else
-. ./ghbot_ve/bin/activate
+. ./fixturebot_ve/bin/activate
 fi
 
-#while true ;
-#do
-#    git pull origin master
-#    ./ghbot.rb
-#    sleep $SLEEP
-#done
+while true ;
+do
+    git pull origin master
+    ./fixture_bot.rb
+    sleep $SLEEP
+done
