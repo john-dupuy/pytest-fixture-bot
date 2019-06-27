@@ -16,7 +16,7 @@ ruby -e "require 'git_diff_parser'" >/dev/null 2>&1 || {
     exit 2
 }
 
-if [ ! -e ./fixture_ve/bin/activate ] ;
+if [ ! -e ./fixturebot_ve/bin/activate ] ;
 then
     virtualenv fixturebot_ve
     . ./fixturebot_ve/bin/activate
