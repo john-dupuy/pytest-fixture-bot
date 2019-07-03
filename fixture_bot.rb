@@ -76,15 +76,21 @@ end
         fixture_search = fixture_eval["search_loc"] || ""
         fixture_global = fixture_eval["global_loc"] || ""
         fixture_clone = fixture_eval["clone_loc"] || ""
+        testing = fixture_eval[:testing] || false
+        test_pr_no = fixture_eval["test_pr"] || 0
         max_comment_length = fixture_eval["max_comment_length"] || 30
     end
-
+    
+    # skip the repo if fixture_eval is not enabled
+    next unless fixture_eval_enabled
     
     # loop over pull requests and check the things
     client.pull_requests(repo_name, :state => "open").each do |pull_request|
 
         # REMOVE THIS before merge (just for testing)
-        next unless pull_request.number == 8963
+        if testing
+            next unless pull_request.number == test_pr_no
+        end
 
         # some variables
         # We have to retrieve full PR object here
