@@ -152,9 +152,9 @@ end
 
                         if func_struct.in_class?
                             class_name = func_struct.class_name
-                            cmd_result = `cd #{fixture_clone}/clone && python -c "from #{module_name} import #{class_name}; print('_pytestfixturefunction' in #{class_name}.#{func_name}.__dict__.keys())"`.strip
+                            cmd_result = `cd #{fixture_clone}/clone && python3 -c "from #{module_name} import #{class_name}; print('_pytestfixturefunction' in #{class_name}.#{func_name}.__dict__.keys())"`.strip
                         else
-                            cmd_result = `cd #{fixture_clone}/clone && python -c "from #{module_name} import #{func_name}; print('_pytestfixturefunction' in #{func_name}.__dict__.keys())"`.strip
+                            cmd_result = `cd #{fixture_clone}/clone && python3 -c "from #{module_name} import #{func_name}; print('_pytestfixturefunction' in #{func_name}.__dict__.keys())"`.strip
                         end
                         # if true, this is a fixture!
                         if true?(cmd_result) 
