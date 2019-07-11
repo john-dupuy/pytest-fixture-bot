@@ -5,7 +5,7 @@ require "yaml"
 require "git_diff_parser"
 
 Octokit.auto_paginate = true
-config = YAML.load_file("fixture_bot.yaml")
+config = YAML.load_file("conf/fixture_bot.yaml")
 client = Octokit::Client.new(config["credentials"] || {})
 
 bot_user_name = config['credentials'][:login]
