@@ -123,13 +123,32 @@ end
                 module_name = file.filename.chomp(".py").gsub("/", ".")
                 # parse the patch
                 patch = GitDiffParser::Patch.new(file.patch)
-                
-                patch.changed_line_numbers.each do |line_no|
+
+                # get the difference between the changed lines
+                #a = patch.changed_line_numbers[1, patch.changed_line_numbers.length]
+                #b = patch.changed_line_numbers[0, patch.changed_line_numbers.length - 1]
+
+                #changed_lines = patch.changed_line_numbers
+                #if changed_lines.length > 1
+                #    diff = a.zip(b).map { |x, y| x - y }
+                #end
+
+                changed_lines.each_with_index do |line_no, i|
+                    #if changed_lines.length > 1
+                        # when multiple lines are changed in one spot skip
+                        #next unless diff[i-1] > 1
+                    #end
                     lines_to_search = max(line_no - 100, 1)
                     # use sed command to find the parent function of the line changed
                     cmd_result = `sed '#{lines_to_search},#{line_no}!d' #{fixture_clone}/clone/#{file.filename}`.split(/\n/)
+                    
+                    # determine if the line is indented (skip if it is not)
+                    next unless cmd_result[-1][0] == " " 
+                    
                     # now loop over this array backwards to find fixtures and functions
                     cmd_result.reverse.each_with_index do |line, index|
+                        next if cmd_result[index+1].nil?
+
                         # find the parent function
                         if match = line.match(/    def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
                             # determine if the parent function is a fixture by checking the line above its definition
@@ -150,69 +169,71 @@ end
                         end
                     end
                 end
-                
-                # get rid of duplicate entries in the array
-                fixtures_in_file = fixtures_in_file.uniq
-                # we have a list of modified fixtures, now we're ready to build our comment
-                fixtures_in_file.each do |func_name|
-                    fixtures_for_comment[func_name] = Hash.new(0)
-                    
-                    is_global = false
-                    
-                    # determine whether or not it's a global fixture
-                    if fixture_global.kind_of?(Array)
-                        fixture_global.each do |global_loc|
-                            if module_name.include? global_loc or module_name.include? global_loc.gsub("/",".")
-                                is_global = true
-                                break
-                            end
-                        end
-                    else
-                        if module_name.include? fixture_global or module_name.include? fixture_global.gsub("/",".")
-                            is_global = true
-                        end
-                    end
 
-                    if is_global
-                        search_loc = fixture_search
-                    else
-                        search_loc = module_name.gsub(".","/").concat(".py") # local fixture
-                    end
+                unless fixtures_in_file.empty?
+                    # get rid of duplicate entries in the array
+                    fixtures_in_file = fixtures_in_file.uniq
+                    # we have a list of modified fixtures, now we're ready to build our comment
+                    fixtures_in_file.each do |func_name|
+                        fixtures_for_comment[func_name] = Hash.new(0)
                         
-                    # store global property
-                    fixtures_for_comment[func_name]["is_global"] = is_global
-
-                    puts "#{func_name} is a fixture, finding usages of it within #{search_loc}"
-
-                    fixture_usages = `cd #{fixture_clone}/clone && grep -H -r #{func_name} #{search_loc}`.strip.split(/\n/)
-
-                    # now find out of the usages, which functions we want to list
-                    old_file = ""
-                    fixture_usages.each do |line|
-                        if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
-                            new_file = line.split(":")[0]
-
-                            if old_file != new_file
-                                fixtures_for_comment[func_name][new_file] = []
+                        is_global = false
+                        
+                        # determine whether or not it's a global fixture
+                        if fixture_global.kind_of?(Array)
+                            fixture_global.each do |global_loc|
+                                if module_name.include? global_loc or module_name.include? global_loc.gsub("/",".")
+                                    is_global = true
+                                    break
+                                end
                             end
-                            # make sure we don't list the fixture under the message
-                            unless func_name == match.captures[0] 
-                                fixtures_for_comment[func_name][new_file] << match.captures[0]
+                        else
+                            if module_name.include? fixture_global or module_name.include? fixture_global.gsub("/",".")
+                                is_global = true
                             end
+                        end
 
-                            old_file = new_file
+                        if is_global
+                            search_loc = fixture_search
+                        else
+                            search_loc = module_name.gsub(".","/").concat(".py") # local fixture
+                        end
+                            
+                        # store global property
+                        fixtures_for_comment[func_name]["is_global"] = is_global
+
+                        puts "#{func_name} is a fixture, finding usages of it within #{search_loc}"
+
+                        fixture_usages = `cd #{fixture_clone}/clone && grep -H -r #{func_name} #{search_loc}`.strip.split(/\n/)
+
+                        # now find out of the usages, which functions we want to list
+                        old_file = ""
+                        fixture_usages.each do |line|
+                            if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
+                                new_file = line.split(":")[0]
+
+                                if old_file != new_file
+                                    fixtures_for_comment[func_name][new_file] = []
+                                end
+                                # make sure we don't list the fixture under the message
+                                unless func_name == match.captures[0] 
+                                    fixtures_for_comment[func_name][new_file] << match.captures[0]
+                                end
+
+                                old_file = new_file
+                            end
                         end
                     end
                 end
             end
-
-            # build & post the comment
-            unless fixtures_for_comment.empty? && (fixture_evaluated.include? pull_request.head.sha)
+            # TODO: add a label for whether or not the fixtures have been evaluated
+            #unless fixtures_for_comment.empty? && (fixture_evaluated.include? pull_request.head.sha)
+            unless fixtures_for_comment.empty?
                 puts "Adding fixture evaluation comment for #{pull_request.head.sha}"
                 remove_old_fixture_eval_comments client, repo_name, pull_request.number
                 comment_body = build_gh_comment fixtures_for_comment, pull_request, max_comment_length
                 client.add_comment repo_name, pull_request.number, comment_body
-            end    
+            end
         end
     end
 end
