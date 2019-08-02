@@ -10,13 +10,16 @@ client = Octokit::Client.new(config["credentials"] || {})
 
 bot_user_name = config['credentials'][:login]
 
+
 def bot_comments client, repo_name, pr
     client.issue_comments(repo_name, pr).reject {|c| c[:body].strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)/).nil? }
 end
 
+
 def get_fixture_eval_comments_hashes client, repo_name, pr
     client.issue_comments(repo_name, pr).map(&:body).map {|c| c.strip.match(/^I detected some fixture changes in commit ([a-fA-F0-9]+)/)}.reject {|h| h.nil?}.map{|c| c[1]}
 end
+
 
 def remove_old_fixture_eval_comments client, repo_name, pr
     comments = bot_comments client, repo_name, pr
@@ -24,6 +27,7 @@ def remove_old_fixture_eval_comments client, repo_name, pr
         client.delete_comment repo_name, comment.id
     end
 end
+
 
 def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
     comment_body = "I detected some fixture changes in commit #{pull_request.head.sha}\n"
@@ -56,14 +60,11 @@ def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
     comment_body << "\nPlease, consider creating a PRT run against these tests make sure your fixture changes do not break existing usage :smiley:"
 end
 
-def true?(obj)
-    # this takes the string "True" or "False" and converts it to a ruby boolean
-    obj.downcase.to_s == "true"
-end
 
 def max (a,b)
     a>b ? a : b
 end
+
 
 # main loop for script 
 (config["repositories"] || {}).each do |repo_name, repo_data|
@@ -90,7 +91,6 @@ end
     # loop over pull requests and check the things
     client.pull_requests(repo_name, :state => "open").each do |pull_request|
 
-        # REMOVE THIS before merge (just for testing)
         if testing
             next unless pull_request.number == test_pr_no
         end
@@ -123,21 +123,12 @@ end
                 module_name = file.filename.chomp(".py").gsub("/", ".")
                 # parse the patch
                 patch = GitDiffParser::Patch.new(file.patch)
-
-                # get the difference between the changed lines
-                #a = patch.changed_line_numbers[1, patch.changed_line_numbers.length]
-                #b = patch.changed_line_numbers[0, patch.changed_line_numbers.length - 1]
-
-                #changed_lines = patch.changed_line_numbers
-                #if changed_lines.length > 1
-                #    diff = a.zip(b).map { |x, y| x - y }
-                #end
-
+                
+                # TODO: figure out a way to not recheck line numbers that are close to one another
+                changed_lines = patch.changed_line_numbers
+                
                 changed_lines.each_with_index do |line_no, i|
-                    #if changed_lines.length > 1
-                        # when multiple lines are changed in one spot skip
-                        #next unless diff[i-1] > 1
-                    #end
+                
                     lines_to_search = max(line_no - 100, 1)
                     # use sed command to find the parent function of the line changed
                     cmd_result = `sed '#{lines_to_search},#{line_no}!d' #{fixture_clone}/clone/#{file.filename}`.split(/\n/)
@@ -227,7 +218,6 @@ end
                 end
             end
             # TODO: add a label for whether or not the fixtures have been evaluated
-            #unless fixtures_for_comment.empty? && (fixture_evaluated.include? pull_request.head.sha)
             unless fixtures_for_comment.empty?
                 puts "Adding fixture evaluation comment for #{pull_request.head.sha}"
                 remove_old_fixture_eval_comments client, repo_name, pull_request.number
