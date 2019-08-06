@@ -195,20 +195,30 @@ end
 
                         puts "#{func_name} is a fixture, finding usages of it within #{search_loc}"
 
-                        fixture_usages = `cd #{fixture_clone}/clone && grep -H -r #{func_name} #{search_loc}`.strip.split(/\n/)
+                        fixture_usages = `cd #{fixture_clone}/clone && grep -H -r '\\<#{func_name}\\>' #{search_loc}`.strip.split(/\n/)
 
                         # now find out of the usages, which functions we want to list
                         old_file = ""
                         fixture_usages.each do |line|
                             if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
                                 new_file = line.split(":")[0]
+                                # also make sure that the there isn't a local fixture defined in that file
+                                skip = false
+                                if is_global
+                                    cmd = `cd #{fixture_clone}/clone && grep -H 'def #{func_name}(' #{new_file}`.strip.split(/\n/)
+                                    skip = !cmd.empty?
+                                end
 
                                 if old_file != new_file
-                                    fixtures_for_comment[func_name][new_file] = []
+                                    unless skip
+                                        fixtures_for_comment[func_name][new_file] = []
+                                    end
                                 end
                                 # make sure we don't list the fixture under the message
-                                unless func_name == match.captures[0] 
-                                    fixtures_for_comment[func_name][new_file] << match.captures[0]
+                                unless func_name == match.captures[0]
+                                    unless skip
+                                        fixtures_for_comment[func_name][new_file] << match.captures[0]
+                                    end
                                 end
 
                                 old_file = new_file
@@ -217,6 +227,7 @@ end
                     end
                 end
             end
+
             # TODO: add a label for whether or not the fixtures have been evaluated
             unless fixtures_for_comment.empty?
                 puts "Adding fixture evaluation comment for #{pull_request.head.sha}"
