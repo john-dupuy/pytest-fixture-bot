@@ -47,6 +47,9 @@ def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
         if file_hash["is_global"]
           local_or_global = "*global*"
         end
+        # don't comment if no usages are found
+        file_hash.delete("is_global")
+        next if file_hash.empty?
         comment_body << "\nThe #{local_or_global} fixture **`#{fixture_name}`** is used in the following files:\n"
         file_hash.each do |file_name, function_array|
             next unless file_name.include? ".py"
@@ -131,10 +134,11 @@ end
                 
                     lines_to_search = max(line_no - 100, 1)
                     # use sed command to find the parent function of the line changed
-                    cmd_result = `sed '#{lines_to_search},#{line_no}!d' #{fixture_clone}/clone/#{file.filename}`.split(/\n/)
-                    
+                    cmd_result = `sed '#{lines_to_search},#{line_no}!d' #{fixture_clone}/clone/#{file.filename}`.lines.map(&:chomp)
                     # determine if the line is indented (skip if it is not)
                     next unless cmd_result[-1][0] == " " 
+                    # skip empty lines
+                    next if cmd_result[-1].strip().empty?
                     
                     # now loop over this array backwards to find fixtures and functions
                     cmd_result.reverse.each_with_index do |line, index|
@@ -200,8 +204,9 @@ end
                         # now find out of the usages, which functions we want to list
                         old_file = ""
                         fixture_usages.each do |line|
+                            # TODO: handle fixtures that are not in the line of the function definition
+                            new_file = line.split(":")[0]
                             if match = line.match(/def ([a-zA-Z_{1}][a-zA-Z0-9_]+)(?=\()/)
-                                new_file = line.split(":")[0]
                                 # also make sure that the there isn't a local fixture defined in that file
                                 skip = false
                                 if is_global
@@ -220,9 +225,13 @@ end
                                         fixtures_for_comment[func_name][new_file] << match.captures[0]
                                     end
                                 end
-
-                                old_file = new_file
+                            else
+                                # if a fixture is found in a file, but it's not clear what function it's in, also report
+                                if old_file != new_file 
+                                    fixtures_for_comment[func_name][new_file] = []
+                                end
                             end
+                            old_file = new_file
                         end
                     end
                 end
