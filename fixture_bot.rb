@@ -47,9 +47,12 @@ def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
         if file_hash["is_global"]
           local_or_global = "*global*"
         end
-        # don't comment if no usages are found
+        # If fixture was found to be changed, but no usages were found, just say that
         file_hash.delete("is_global")
-        next if file_hash.empty?
+        if file_hash.empty?
+          comment_body << "\n The #{local_or_global} fixture **`#{fixture_name}`** was changed, but I didn't find where it's used."
+          next
+        end
         comment_body << "\nThe #{local_or_global} fixture **`#{fixture_name}`** is used in the following files:\n"
         file_hash.each do |file_name, function_array|
             next unless file_name.include? ".py"
@@ -60,7 +63,7 @@ def build_gh_comment fixtures_for_comment, pull_request, max_comment_length
         end
     end
     comment_body << "\n</details>\n" if nl > max_comment_length 
-    comment_body << "\nPlease, consider creating a PRT run against these tests make sure your fixture changes do not break existing usage :smiley:"
+    comment_body << "\nPlease, consider creating a PRT run to make sure your fixture changes do not break existing usage :smiley:"
 end
 
 
@@ -228,7 +231,15 @@ end
                             else
                                 # if a fixture is found in a file, but it's not clear what function it's in, also report
                                 if old_file != new_file 
-                                    fixtures_for_comment[func_name][new_file] = []
+                                    # make sure that there is a comma after the fixture_name
+                                    cmd = `cd #{fixture_clone}/clone && grep -H '#{func_name},' #{new_file}`.strip.split(/\n/)
+                                    if cmd.empty?
+                                      # also search for a paratheses after the fixture name
+                                      cmd = `cd #{fixture_clone}/clone && grep -H '#{func_name})' #{new_file}`.strip.split(/\n/)
+                                    end
+                                    if !cmd.empty? 
+                                      fixtures_for_comment[func_name][new_file] = []
+                                    end
                                 end
                             end
                             old_file = new_file
